@@ -1,0 +1,86 @@
+# =============================================================================
+# buildspec.yml — Pipeline de Integración Continua (CI)
+# Proyecto 2 - Entrega 2: Integración Continua con AWS CodeBuild + ECR
+#
+# Flujo de ejecución:
+#   install    → instala dependencias Python + pytest
+#   pre_build  → corre pruebas unitarias (si fallan, el build se detiene)
+#                luego autentica Docker con ECR
+#   build      → construye la imagen Docker y la etiqueta
+#   post_build → sube la imagen a ECR como artefacto final
+# =============================================================================
+
+version: 0.2
+
+env:
+  variables:
+    # Región donde está creado el repositorio ECR
+    AWS_DEFAULT_REGION: "us-east-1"
+
+    # URI completo del repositorio AWS ECR
+    ECR_REPO_URI: "675429486551.dkr.ecr.us-east-1.amazonaws.com/blacklist-devops-repo"
+
+    # Etiqueta de la imagen Docker que se subirá a ECR
+    IMAGE_TAG: "latest"
+
+phases:
+
+  # ---------------------------------------------------------------------------
+  # FASE 1: Instala Python, pytest y todas las dependencias del microservicio.
+  # ---------------------------------------------------------------------------
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      - echo "==> [install] Instalando dependencias y herramientas de prueba..."
+      - pip install pytest pytest-mock -r src/requirements.txt
+      - echo "==> [install] Dependencias instaladas correctamente."
+
+  # ---------------------------------------------------------------------------
+  # FASE 2: pre_build
+  # Paso 1: Ejecutar pruebas unitarias PRIMERO.
+  #         Si algún test falla → el build se detiene aquí.
+  #         Docker nunca llega a construirse, ahorrando tiempo y recursos.
+  # Paso 2: Autenticar Docker con ECR (solo si los tests pasaron).
+  # ---------------------------------------------------------------------------
+  pre_build:
+    commands:
+      - echo "==> [pre_build] Ejecutando pruebas unitarias con Pytest..."
+      - PYTHONPATH=. pytest src/test_application.py -v
+      - echo "==> [pre_build] Todas las pruebas pasaron exitosamente."
+      - echo "==> [pre_build] Autenticando Docker con Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI
+      - echo "==> [pre_build] Autenticacion con ECR completada."
+
+  # ---------------------------------------------------------------------------
+  # FASE 3: build
+  # Construye la imagen Docker y la etiqueta con el URI de ECR.
+  # ---------------------------------------------------------------------------
+  build:
+    commands:
+      - echo "==> [build] Construyendo imagen Docker..."
+      - "docker build -t blacklist-api ."
+      - echo "==> [build] Imagen construida. Etiquetando para ECR..."
+      - "docker tag blacklist-api:latest ${ECR_REPO_URI}:${IMAGE_TAG}"
+      - echo "==> [build] Imagen etiquetada como ${ECR_REPO_URI}:${IMAGE_TAG}"
+
+  # ---------------------------------------------------------------------------
+  # FASE 4: post_build
+  # Sube la imagen etiquetada a ECR. Esta imagen es el artefacto final del CI.
+  # ---------------------------------------------------------------------------
+  post_build:
+    commands:
+      - echo "==> [post_build] Subiendo imagen a Amazon ECR..."
+      - "docker push ${ECR_REPO_URI}:${IMAGE_TAG}"
+      - echo "==> [post_build] Imagen publicada exitosamente en ECR."
+      - echo "==> [post_build] URI del artefacto"
+      - echo "==> [post_build] Build de integracion continua completado."
+
+# -----------------------------------------------------------------------------
+# Artefactos
+# Permite a CodePipeline transferir contenido del repositorio
+# entre etapas del pipeline. Requerido para que el pipeline funcione.
+# -----------------------------------------------------------------------------
+artifacts:
+  files:
+    - '**/*'

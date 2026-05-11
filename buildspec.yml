@@ -75,7 +75,12 @@ phases:
       - echo "==> [post_build] Imagen publicada exitosamente en ECR."
       - echo "==> [post_build] URI del artefacto"
       - echo "==> [post_build] Build de integracion continua completado."
-
+      # -------------------------------------------------------------------
+      #  NUEVO PARA EL ESQUEMA FARGATE BLUE/GREEN (PROYECTO 3)
+      # -------------------------------------------------------------------
+      - echo "==> [post_build] Escribiendo el archivo imageDetail.json para CodeDeploy..."
+      - printf '{"ImageURI":"%s"}' ${ECR_REPO_URI}:${IMAGE_TAG} > imageDetail.json
+      - echo "==> [post_build] imageDetail.json creado exitosamente."
 # -----------------------------------------------------------------------------
 # Artefactos
 # Permite a CodePipeline transferir contenido del repositorio
@@ -84,3 +89,7 @@ phases:
 artifacts:
   files:
     - '**/*'
+# Exportamos estos 3 nuevos archivos para que vayan al Deploy
+    - imageDetail.json
+    - appspec.json
+    - taskdef.json
